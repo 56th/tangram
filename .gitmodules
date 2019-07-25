@@ -3,4 +3,4 @@
 	url = ../../laristra/cinch.git
 [submodule "wonton"]
 	path = wonton
-	url = ../../laristra/wonton.git
+	url = https://github.com/56th/wonton.git
