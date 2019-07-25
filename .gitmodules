@@ -4,3 +4,4 @@
 [submodule "wonton"]
 	path = wonton
 	url = https://github.com/56th/wonton.git
+	branch = 56th/amanzi
