@@ -34,29 +34,30 @@ namespace Tangram {
 enum BFGS_ALG {
   BFGS,       //Algorithm based on Nocedal&Wright book, 
               //uses linesearch with strong Wolfe conditions
-  BFGS_MWWP,  //Similar to BFGS, but uses linesearch with 
-              //Modified Weak Wolfe-Powell conditions, 
-              //claims global convergence of BFGS for general functions
   DBFGS       //Algorithm by M.Al-Baali, uses linesearch with strong Wolfe conditions
               //and an advanced damping technique
 };
 
 constexpr BFGS_ALG mof_bfgs_alg = BFGS;
 
+inline
 Vector<1> cartesian_to_polar(const Vector<2> cartesian_vec) {
   return Vector<1>(atan2(cartesian_vec[1], cartesian_vec[0]));
 }
 
+inline
 Vector<2> cartesian_to_polar(const Vector<3> cartesian_vec) {
   double len = cartesian_vec.norm();
   return Vector<2>(atan2(cartesian_vec[1], cartesian_vec[0]), 
                    acos(cartesian_vec[2]/len));
 }
 
+inline
 Vector<2> polar_to_cartesian(const Vector<1> polar_vec) {
   return Vector<2>(cos(polar_vec[0]), sin(polar_vec[0]));
 }
 
+inline
 Vector<3> polar_to_cartesian(const Vector<2> polar_vec) {
   return Vector<3>(sin(polar_vec[1])*cos(polar_vec[0]),
                    sin(polar_vec[1])*sin(polar_vec[0]),
@@ -75,7 +76,7 @@ public:
   */
   explicit MOF(const Mesh_Wrapper& Mesh, 
                const std::vector<IterativeMethodTolerances_t>& ims_tols,
-               const bool all_convex = false) : 
+               const bool all_convex) : 
                mesh_(Mesh), ims_tols_(ims_tols), all_convex_(all_convex) {
     if (ims_tols.size() < 2)
       throw std::runtime_error(
@@ -164,7 +165,7 @@ public:
                           const int matID,
                           const std::vector< MatPoly<Dim> >& mixed_polys,
                           Plane_t<Dim>& cutting_plane,
-                          const bool planar_faces = true) const {
+                          const bool planar_faces) const {
     assert(Dim > 1);
 
     int cellMatID = std::distance(cell_mat_ids_[cellID].begin(),
@@ -189,9 +190,6 @@ public:
     switch(mof_bfgs_alg) {
       case BFGS: ang_min = bfgs<Dim - 1>(bfgs_obj_fun, bfgs_obj_fun_lbnd, 
                                          init_guess, ims_tols_[1]);
-        break;
-      case BFGS_MWWP: ang_min = bfgs_mwwp<Dim - 1>(bfgs_obj_fun, bfgs_obj_fun_lbnd, 
-                                                   init_guess, ims_tols_[1]);
         break;
       case DBFGS: ang_min = dbfgs<Dim - 1>(bfgs_obj_fun, bfgs_obj_fun_lbnd, 
                                            init_guess, ims_tols_[1]);
@@ -218,11 +216,12 @@ public:
   std::shared_ptr<CellMatPoly<Dim>> operator()(const int cell_op_ID) const {
     int cellID = icells_to_reconstruct[cell_op_ID];
 
+    double dst_tol = ims_tols_[0].arg_eps;
     // Check if the cell is single-material
     if (cell_mat_ids_[cellID].size() == 1) {
       std::shared_ptr< CellMatPoly<Dim> > cmp_ptr(new CellMatPoly<Dim>(cellID));
       MatPoly<Dim> cell_matpoly;
-      cell_get_matpoly(mesh_, cellID, &cell_matpoly);
+      cell_get_matpoly(mesh_, cellID, &cell_matpoly, dst_tol);
       cell_matpoly.set_mat_id(cell_mat_ids_[cellID][0]);
       cmp_ptr->add_matpoly(cell_matpoly);
 
@@ -315,7 +314,8 @@ public:
   */
   MatPoly<Dim> cell_matpoly(const int cellID) const { 
     MatPoly<Dim> mat_poly;
-    cell_get_matpoly(mesh_, cellID, &mat_poly);
+    double dst_tol = ims_tols_[0].arg_eps;
+    cell_get_matpoly(mesh_, cellID, &mat_poly, dst_tol);
 
     return mat_poly;
   }
@@ -365,7 +365,7 @@ private:
       std::cerr << "MOF for cell " << cellID << ", testing normal ( ";
       for (int idim = 0; idim < Dim; idim++)
         std::cerr << plane_normal[idim] << " ";
-      std::cerr << "): after " <<
+      std::cerr << "): given a maximum of " <<
         ims_tols_[0].max_num_iter <<
         " iteration(s) achieved error in volume for material " << 
         cell_mat_ids_[cellID][cellMatID] << " is " << cur_vol_err << 
