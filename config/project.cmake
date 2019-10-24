@@ -15,7 +15,7 @@ cinch_minimum_required(VERSION 1.0)
 
 set(TANGRAM_VERSION_MAJOR 0)
 set(TANGRAM_VERSION_MINOR 9)
-set(TANGRAM_VERSION_PATCH 4)
+set(TANGRAM_VERSION_PATCH 7)
 
 
 # If a C++14 compiler is available, then set the appropriate flags
@@ -46,10 +46,6 @@ cinch_load_extras()
 set(CINCH_HEADER_SUFFIXES "\\.h")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake")
-
-# set the name of the Portage library
-
-set(TANGRAM_LIBRARY "tangram" CACHE STRING "Name of the tangram library")
 
 
 #-----------------------------------------------------------------------------
@@ -210,83 +206,6 @@ if (Jali_DIR)
 endif (Jali_DIR)
 
 #------------------------------------------------------------------------------#
-# Configure LAPACKE
-#------------------------------------------------------------------------------#
-
-if (LAPACKE_DIR)
-
-  # Directly look for cmake config file in LAPACKE_DIR and below
-  file(GLOB_RECURSE LAPACKE_CONFIG_FILE ${LAPACKE_DIR}/lapacke-config.cmake)
-
-  if (NOT LAPACKE_CONFIG_FILE)
-    message(FATAL_ERROR " LAPACKE CMAKE config file not found under LAPACKE_DIR (${LAPACKE_DIR})")
-  endif (NOT LAPACKE_CONFIG_FILE)
-
-  message(STATUS "LAPACKE_CONFIG_FILE ${LAPACKE_CONFIG_FILE}")
-
-  get_filename_component(LAPACKE_CONFIG_PATH ${LAPACKE_CONFIG_FILE} DIRECTORY)
-  message(status " LAPACKE_CONFIG_PATH ${LAPACKE_CONFIG_PATH}")
-
-  # If successful, the config file will set LAPACKE_LIBRARIES,
-  # LAPACKE_lapack_LIBRARIES and LAPACKE_blas_LIBRARIES
-
-  find_package(LAPACKE NO_MODULE NO_DEFAULT_PATH HINTS ${LAPACKE_CONFIG_PATH})
-
-  if (LAPACKE_LIBRARIES STREQUAL "lapacke")
-
-    # LAPACKE config file does not set the library path but it does set the
-    # LAPACKE_INCLUDE_DIRS path. Try to back out the library path using this
-    # and the top level directory as starting points for a find_library command
-
-    find_library(LAPACKE_LIBRARY NAMES lapacke
-                 NO_CMAKE_SYSTEM_PATH NO_DEFAULT_PATH
-                 HINTS ${LAPACKE_DIR} ${LAPACKE_INCLUDE_DIRS}/..
-                 PATH_SUFFIXES lib lib64)
-           
-
-    # Extract path of directory in which library files live to pass as a lib
-    # search directory for the linker to find lapacke, lapack and blas libs
-
-    get_filename_component(LAPACKE_LIBRARY_DIR ${LAPACKE_LIBRARY} DIRECTORY)
-
-    set(LAPACKE_LIBRARIES "-Wl,-rpath,${LAPACKE_LIBRARY_DIR} -L${LAPACKE_LIBRARY_DIR} -l${LAPACKE_LIBRARIES} -l${LAPACK_lapack_LIBRARIES} -l${LAPACK_blas_LIBRARIES}")
-
-    # If we don't want to link with Fortran then we have to tell it to link
-    # with the Fortran libraries because LAPACK is written/compiled in Fortran
-    #
-    # NEEDED FOR STATIC LAPACK LIBS
-
-    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-      set(LAPACKE_LIBRARIES "${LAPACKE_LIBRARIES} -lgfortran")    
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
-      set(LAPACKE_LIBRARIES "${LAPACKE_LIBRARIES} -lifcore")    
-    endif()
-
-  endif(LAPACKE_LIBRARIES STREQUAL "lapacke")
-
-else (LAPACKE_DIR)
-
-  # Use FindLAPACKE.cmake provided by cinch or cmake to find it
-  # FindLAPACKE.cmake provided by cinch requires PC_LAPACKE_INCLUDE_DIRS and
-  # PC_LAPACKE_LIBRARY to be able to find LAPACKE
-
-  find_package(LAPACKE)
-
-endif (LAPACKE_DIR)
-
-if (LAPACKE_FOUND) 
-  include_directories(${LAPACKE_INCLUDE_DIRS})
-  add_definitions("-DHAVE_LAPACKE")
-  list(APPEND TANGRAM_EXTRA_LIBRARIES ${LAPACKE_LIBRARIES})
-
-  message(STATUS "LAPACKE_FOUND ${LAPACKE_FOUND}")
-  message(STATUS "LAPACKE_LIBRARIES  ${LAPACKE_LIBRARIES}")
-else (LAPACKE_FOUND)
-   unset(LAPACKE_LIBRARIES)  # otherwise it will be LAPACKE-NOTFOUND or something
-endif (LAPACKE_FOUND)
-
-#------------------------------------------------------------------------------#
 # Configure XMOF2D
 #------------------------------------------------------------------------------#
 
@@ -330,6 +249,9 @@ endif(NGC_INCLUDE_DIR)
 set(ENABLE_THRUST FALSE CACHE BOOL "Use Thrust")
 if(ENABLE_THRUST)
   message(STATUS "Enabling compilation with Thrust")
+
+  set(TANGRAM_ENABLE_THRUST True CACHE BOOL "Is Tangram compiled with Thrust?")
+
   # allow the user to specify a THRUST_DIR, otherwise use ${NGC_INCLUDE_DIR}
   # NOTE: thrust internally uses include paths from the 'root' directory, e.g.
   #
@@ -387,7 +309,7 @@ endif(ENABLE_THRUST)
 
 include_directories(${CMAKE_BINARY_DIRECTORY})
 
-# Apps and Libraries
+# Apps and Libraries 
 cinch_add_application_directory(app)
 cinch_add_library_target(tangram tangram)
 
@@ -406,7 +328,7 @@ endif()
 get_directory_property(TANGRAM_COMPILE_DEFINITIONS DIRECTORY ${CMAKE_SOURCE_DIR} COMPILE_DEFINITIONS)
 
 # build the TANGRAM_LIBRARIES variable
-set(TANGRAM_LIBRARIES ${TANGRAM_LIBRARY} ${TANGRAM_EXTRA_LIBRARIES} CACHE STRING "List of libraries to link with tangram")
+set(TANGRAM_LIBRARIES ${TANGRAM_EXTRA_LIBRARIES} CACHE STRING "List of libraries to link with tangram")
 
 ############################################################################## 
 # Write a configuration file from template replacing only variables enclosed
@@ -414,13 +336,13 @@ set(TANGRAM_LIBRARIES ${TANGRAM_LIBRARY} ${TANGRAM_EXTRA_LIBRARIES} CACHE STRING
 # TANGRAM was built and which TPLs it used
 #############################################################################
 
-configure_file(${PROJECT_SOURCE_DIR}/cmake/tangram_config.cmake.in 
-               ${PROJECT_BINARY_DIR}/tangram_config.cmake @ONLY)
-install(FILES ${PROJECT_BINARY_DIR}/tangram_config.cmake 
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/share/cmake/)
-
 configure_file(${PROJECT_SOURCE_DIR}/config/tangram-config.h.in
-               ${PROJECT_BINARY_DIR}/tangram-config.h @ONLY)
+  ${PROJECT_BINARY_DIR}/tangram-config.h @ONLY)
 install(FILES ${PROJECT_BINARY_DIR}/tangram-config.h
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/include/)
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/include/)
 
+
+configure_file(${PROJECT_SOURCE_DIR}/cmake/tangram-config.cmake.in 
+  ${PROJECT_BINARY_DIR}/tangram-config.cmake @ONLY)
+install(FILES ${PROJECT_BINARY_DIR}/tangram-config.cmake 
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/share/cmake/)
